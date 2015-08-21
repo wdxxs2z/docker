@@ -59,6 +59,15 @@ func (n NetworkMode) IsNone() bool {
 	return n == "none"
 }
 
+// Is HasIp vlan mode
+func (n NetworkMode) HasIp() bool {
+	parts := strings.Split(string(n), ":")
+	if len(parts) == 2 {
+		return true
+	}
+	return false
+}
+
 // MergeConfigs merges the specified container Config and HostConfig.
 // It creates a ContainerConfigWrapper.
 func MergeConfigs(config *Config, hostConfig *HostConfig) *ContainerConfigWrapper {

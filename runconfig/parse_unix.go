@@ -22,7 +22,7 @@ func ValidateNetMode(c *Config, hc *HostConfig) error {
 			return fmt.Errorf("--net: invalid net mode: invalid container format container:<name|id>")
 		}
 	default:
-		return fmt.Errorf("invalid --net: %s", hc.NetworkMode)
+		// return fmt.Errorf("invalid --net: %s", hc.NetworkMode)
 	}
 
 	if (hc.NetworkMode.IsHost() || hc.NetworkMode.IsContainer()) && c.Hostname != "" {

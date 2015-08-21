@@ -3,6 +3,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -762,6 +763,19 @@ func (container *Container) buildCreateEndpointOptions() ([]libnetwork.EndpointO
 		createOptions = append(createOptions, libnetwork.EndpointOptionGeneric(genericOption))
 	}
 
+	//Set vlan ip address
+	var ipAddress string
+	if container.hostConfig.NetworkMode.HasIp() {
+		parts := strings.Split(string(container.hostConfig.NetworkMode), ":")
+		ipAddress = parts[1]
+	}
+	if ipAddress != "" {
+		genericOption := options.Generic{
+			netlabel.IpAddressv4: ipAddress,
+		}
+		createOptions = append(createOptions, libnetwork.EndpointOptionGeneric(genericOption))
+	}
+
 	return createOptions, nil
 }
 
@@ -822,10 +836,34 @@ func (container *Container) AllocateNetwork() error {
 		return nil
 	}
 
+	parts := strings.Split(string(mode), ":")
+
+	switch {
+	case len(parts) == 0:
+		return nil
+	case len(parts) == 1:
+	case len(parts) == 2:
+	default:
+		return errors.New("networkname:ip not specified")
+	}
+
+	mode = runconfig.NetworkMode(parts[0])
+	var networkName string
+	var networkByName = false
+	n, err := controller.NetworkByName(String(mode))
+	if err == nil {
+		networkName = string(mode)
+		networkByName = true
+	} else { 
+		networkName = mode.NetworkName
+	}
+
+
+
 	networkDriver := string(mode)
 	service := container.Config.PublishService
 	networkName := mode.NetworkName()
-	if mode.IsDefault() {
+	if ! networkByName && mode.IsDefault() {
 		if service != "" {
 			service, networkName, networkDriver = parseService(controller, service)
 		} else {
@@ -847,6 +885,10 @@ func (container *Container) AllocateNetwork() error {
 		service = strings.Replace(container.Name, ".", "-", -1)
 		// Service names dont like "/" in them. removing it instead of failing for backward compatibility
 		service = strings.Replace(service, "/", "", -1)
+	}
+
+	if ! networkByName {
+		n, err = controller.NetworkByName(networkName)
 	}
 
 	if container.secondaryNetworkRequired(networkDriver) {

@@ -24,6 +24,9 @@ const (
 	//EnableIPv6 constant represents enabling IPV6 at network level
 	EnableIPv6 = Prefix + ".enable_ipv6"
 
+	//EnableIPv4 constant represents enabling IPV4 at network level
+	EnableIPv4 = Prefix + ".endpoint.ipaddressv4"
+
 	// KVProvider constant represents the KV provider backend
 	KVProvider = DriverPrefix + ".kv_provider"
 

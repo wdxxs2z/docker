@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
+	dnetlink "github.com/docker/libcontainer/netlink"
 	"github.com/docker/libnetwork/driverapi"
 	"github.com/docker/libnetwork/ipallocator"
 	"github.com/docker/libnetwork/iptables"
@@ -59,6 +60,8 @@ type networkConfiguration struct {
 	DefaultGatewayIPv6    net.IP
 	DefaultBindingIP      net.IP
 	AllowNonDefaultBridge bool
+	VlanId                int
+	IfName                string
 }
 
 // endpointConfiguration represents the user specified configuration for the sandbox endpoint
@@ -66,6 +69,7 @@ type endpointConfiguration struct {
 	MacAddress   net.HardwareAddr
 	PortBindings []types.PortBinding
 	ExposedPorts []types.TransportPort
+	IPAddressv4  net.IP
 }
 
 // containerConfiguration represents the user specified configuration for a container
@@ -528,6 +532,42 @@ func parseNetworkOptions(option options.Generic) (*networkConfiguration, error) 
 		}
 	}
 
+	// Process VLAN related options
+	if _, ok := option["vlanid"]; ok {
+		config.VlanId = int(option["vlanid"].(float64))
+	}
+	if _, ok := option["ifname"]; ok {
+		config.IfName = option["ifname"].(string)
+	}
+	if _, ok := option["AddressIPv4"]; ok {
+
+		addressIPv4 := option["AddressIPv4"].(string)
+		if addressIPv4 != "" {
+			ip, netv4, err := net.ParseCIDR(option["AddressIPv4"].(string))
+			if err != nil {
+				return nil, err
+			}
+			bipNet := &net.IPNet{
+				IP:   ip,
+				Mask: netv4.Mask,
+			}
+
+			config.AddressIPv4 = bipNet
+			logrus.Infof("config.AddressIPv4: %#v", config.AddressIPv4)
+		}
+	}
+	if _, ok := option["FixedCIDR"]; ok {
+		fixedCIDR := option["FixedCIDR"].(string)
+		if fixedCIDR != "" {
+			_, fCIDR, err := net.ParseCIDR(option["FixedCIDR"].(string))
+			if err != nil {
+				return nil, err
+			}
+			config.FixedCIDR = fCIDR
+			logrus.Infof("config.FixedCIDR: %#v", config.FixedCIDR)
+		}
+	}
+
 	// Process well-known labels next
 	if _, ok := option[netlabel.EnableIPv6]; ok {
 		config.EnableIPv6 = option[netlabel.EnableIPv6].(bool)
@@ -716,7 +756,51 @@ func (d *driver) CreateNetwork(id types.UUID, option map[string]interface{}) err
 		return err
 	}
 
+	//VlanId and IfName config
+	if config.VlanId != 0 && config.IfName != "" {
+		ifnamevlan := strings.Join([]string{config.IfName, strconv.Itoa(config.VlanId)}, ".")
+		if err := newVlanInterface(ifnamevlan); err != nil {
+			return err
+		}
+
+		if err := attachVlanInterface(ifnamevlan, config.BridgeName); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+func newVlanInterface(name string) error {
+
+	intSplit := strings.Split(name, ".")
+	if len(intSplit) != 2 {
+		return errors.New("invalid interface name, ie. eth0")
+	}
+
+	vlanID, _ := strconv.Atoi(intSplit[1])
+
+	err := dnetlink.NetworkLinkAddVlan(intSplit[0], name, uint16(vlanID))
+	if err != nil && err.Error() == "file exists" {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
+
+func attachVlanInterface(name, bridgeName string) error {
+	int1, err := net.InterfaceByName(name)
+	if err != nil {
+		return err
+	}
+
+	int2, err := net.InterfaceByName(bridgeName)
+	if err != nil {
+		return err
+	}
+
+	return dnetlink.NetworkSetMaster(int1, int2)
 }
 
 func (d *driver) DeleteNetwork(nid types.UUID) error {
@@ -981,7 +1065,7 @@ func (d *driver) CreateEndpoint(nid, eid types.UUID, epInfo driverapi.EndpointIn
 	}
 
 	// v4 address for the sandbox side pipe interface
-	ip4, err := ipAllocator.RequestIP(n.bridge.bridgeIPv4, nil)
+	ip4, err := ipAllocator.RequestIP(n.bridge.bridgeIPv4, epConfig.IpAddressv4)
 	if err != nil {
 		return err
 	}
@@ -1379,6 +1463,15 @@ func parseEndpointOptions(epOptions map[string]interface{}) (*endpointConfigurat
 	if opt, ok := epOptions[netlabel.ExposedPorts]; ok {
 		if ports, ok := opt.([]types.TransportPort); ok {
 			ec.ExposedPorts = ports
+		} else {
+			return nil, &ErrInvalidEndpointConfig{}
+		}
+	}
+
+	//parse ipv4
+	if opt, ok := epConfig[netlabel.IpAddressv4]; ok {
+		if ipAddress, ok := opt.(string); ok {
+			ec.IpAddressv4 = net.ParseIP(ipAddress)
 		} else {
 			return nil, &ErrInvalidEndpointConfig{}
 		}
