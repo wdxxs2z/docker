@@ -124,7 +124,7 @@ Finally, several networking options can only be provided when calling
     [Configuring DNS](#dns) and
     [Communication between containers](#between-containers)
 
- *  `--net=bridge|none|container:NAME_or_ID|host` — see
+ *  `--net=bridge|none|container:NAME_or_ID|host|networkname|networkname:staticip` — see
     [How Docker networks a container](#container-networking)
 
  *  `--mac-address=MACADDRESS...` — see
@@ -947,6 +947,15 @@ values.
     network stack but not to take any steps to configure its network,
     leaving you free to build any of the custom configurations explored
     in the last few sections of this document.
+
+ *  `--net=networkname` - Connects the container to the network bridge
+    that was for the specified `networkname` instead of the default
+    bridge.
+
+ *  `--net=networkname:ipaddress` - Connects the container to the network
+    bridge as above but also assigns a static IP address to the container.
+    The static IP address must not be used by another container and must
+    match the ip range that was created with the network.
 
 To get an idea of the steps that are necessary if you use `--net=none`
 as described in that last bullet point, here are the commands that you
