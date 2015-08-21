@@ -36,6 +36,17 @@ if you have loaded a networking plugin e.g `docker network create -d <plugin_nam
         aae601f43744bc1f57c515a16c8c7c4989a2cad577978a32e6910b799a6bccf6
         $ docker network create -d overlay bar
         d9989793e2f5fe400a58ef77f706d03f668219688ee989ea68ea78b990fa2406
+        
+You can additionally specify `--vlanid=` and `--ifname=` to create and attach an
+uplink interface to the bridge.  This enables external connectivity for the bridge.
+
+        $ docker network create -d bridge --vlanid=105 --ifname=eth0 cheetos
+        64e45e133127467f8c5c617e0e8952d4adca6a8f021be65a134a0fce89837a72
+
+In order to ensure containers on different hosts can communicate without a router, you must
+create networks with the same network parameters.  
+
+        $ docker network create -d bridge --vlanid=202 --ifname=eth0 --bip=172.16.2.1/24 --fixed-cidr=172.16.2.0/24 testing202
 
 `docker network ls` is used to display the currently configured networks
 
